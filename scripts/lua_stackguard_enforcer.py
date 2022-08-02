@@ -61,11 +61,7 @@ def contains_lua_calls(item):
     """Check if a node contains any Lua API calls"""
     if 'lua_' in item['tokens']:
         return True
-    if 'luaL_' in item['tokens']:
-        return True
-    if 'LuaSkin' in item['tokens']:
-        return True
-    return False
+    return True if 'luaL_' in item['tokens'] else 'LuaSkin' in item['tokens']
 
 
 def main(filename):
@@ -102,13 +98,13 @@ def main(filename):
         stacktxt = "NO STACKGUARD"
         hasstackentry = "_lua_stackguard_entry" in thing['tokens']
         hasstackexit = "_lua_stackguard_exit" in thing['tokens']
-        if hasstackentry and hasstackexit:
-            continue
-        if hasstackentry and not hasstackexit:
+        if hasstackentry:
+            if hasstackexit:
+                continue
             stacktxt = "STACK ENTRY, BUT NO EXIT"
-        if hasstackexit and not hasstackentry:
+        if hasstackexit:
             stacktxt = "STACK EXIT, BUT NO ENTRY (THIS IS A CRASH)"
-        print(u"%s :: %s :: %s" % (filename, thing['spelling'], stacktxt))
+        print(f"{filename} :: {thing['spelling']} :: {stacktxt}")
 
 
 if __name__ == '__main__':

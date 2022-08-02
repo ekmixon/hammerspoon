@@ -60,19 +60,19 @@ ARGUMENTS = None
 def dbg(msg):
     """Print a debug message"""
     if DEBUG:
-        print("DEBUG: %s" % msg)
+        print(f"DEBUG: {msg}")
 
 
 def warn(msg):
     """Print a warning message"""
     global HAS_WARNED
-    print("WARN: %s" % msg)
+    print(f"WARN: {msg}")
     HAS_WARNED = True
 
 
 def err(msg):
     """Print an error message"""
-    print("ERROR: %s" % msg)
+    print(f"ERROR: {msg}")
     sys.exit(1)
 
 
@@ -80,11 +80,11 @@ def find_code_files(path):
     """Find all of the code files under a path"""
     code_files = []
     for dirpath, _, files in os.walk(path):
-        dbg("Entering: %s" % dirpath)
+        dbg(f"Entering: {dirpath}")
         for filename in files:
             if filename.endswith(".m") or filename.endswith(".lua"):
-                dbg("  Found file: %s/%s" % (dirpath, filename))
-                code_files.append("%s/%s" % (dirpath, filename))
+                dbg(f"  Found file: {dirpath}/{filename}")
+                code_files.append(f"{dirpath}/{filename}")
     return code_files
 
 
@@ -95,7 +95,7 @@ def extract_docstrings(filename):
     chunk = None
     i = 0
     with open(filename, "r") as filedata:
-        for raw_line in filedata.readlines():
+        for raw_line in filedata:
             i += 1
             line = raw_line.strip('\n')
             if line.startswith("----") or line.startswith("////"):
@@ -106,30 +106,23 @@ def extract_docstrings(filename):
                 if not is_in_chunk:
                     # This is a new chunk
                     is_in_chunk = True
-                    chunk = []
-                    # Store the file and line number
-                    chunk.append(filename)
-                    chunk.append("%d" % i)
+                    chunk = [filename, "%d" % i]
                 # Append the line to the current chunk
                 line = line.strip("/-")
                 if len(line) > 0 and line[0] == ' ':
                     line = line[1:]
                 chunk.append(line)
-            else:
-                # We hit a line that isn't a docstring. If we were previously
-                #  processing docstrings, we just exited a chunk of docs, so
-                #  store it and reset for the next chunk.
-                if is_in_chunk and chunk:
-                    docstrings.append(chunk)
-                    is_in_chunk = False
-                    chunk = None
+            elif is_in_chunk and chunk:
+                docstrings.append(chunk)
+                is_in_chunk = False
+                chunk = None
 
     return docstrings
 
 
 def find_module_for_item(modules, item):
     """Find the matching module for a given item"""
-    dbg("find_module_for_item: Searching for: %s" % item)
+    dbg(f"find_module_for_item: Searching for: {item}")
     module = None
 
     # We need a shortcut here for root level items
@@ -143,19 +136,15 @@ def find_module_for_item(modules, item):
         module = item.split(':')[0]
 
     if not module:
-        matches = []
-        for mod in modules:
-            if item.startswith(mod):
-                matches.append(mod)
-
+        matches = [mod for mod in modules if item.startswith(mod)]
         matches.sort()
-        dbg("find_module_for_item: Found options: %s" % matches)
+        dbg(f"find_module_for_item: Found options: {matches}")
         try:
             module = matches[-1]
         except IndexError:
-            err("Unable to find module for: %s" % item)
+            err(f"Unable to find module for: {item}")
 
-    dbg("find_module_for_item: Found: %s" % module)
+    dbg(f"find_module_for_item: Found: {module}")
     return module
 
 
@@ -171,10 +160,7 @@ def remove_method_from_itemname(itemname):
 
 def find_basename_from_itemname(itemname):
     """Find the base name of an item, from its full name"""
-    # (where "base name" means the function/method/variable/etc name
-    splitchar = '.'
-    if ':' in itemname:
-        splitchar = ':'
+    splitchar = ':' if ':' in itemname else '.'
     return itemname.split(splitchar)[-1].split(' ')[0]
 
 
@@ -225,26 +211,22 @@ def process_docstrings(docstrings):
         if chunk[2].startswith("==="):
             # This is a module definition
             modulename = chunk[CHUNK_SIGN].strip("= ")
-            dbg("process_docstrings: Module: %s at %s:%s" % (
-                modulename,
-                chunk[CHUNK_FILE],
-                chunk[CHUNK_LINE]))
-            docs[modulename] = {}
-            docs[modulename]["header"] = chunk
-            docs[modulename]["items"] = {}
+            dbg(
+                f"process_docstrings: Module: {modulename} at {chunk[CHUNK_FILE]}:{chunk[CHUNK_LINE]}"
+            )
 
+            docs[modulename] = {"header": chunk, "items": {}}
     # Now we'll get all of the item definitions
     for chunk in docstrings:
         if not chunk[2].startswith("==="):
             # This is an item definition
             itemname = find_itemname_from_signature(chunk[CHUNK_SIGN])
-            dbg("process_docstrings: Found item: %s at %s:%s" % (
-                itemname,
-                chunk[CHUNK_FILE],
-                chunk[CHUNK_LINE]))
+            dbg(
+                f"process_docstrings: Found item: {itemname} at {chunk[CHUNK_FILE]}:{chunk[CHUNK_LINE]}"
+            )
+
             modulename = find_module_for_item(list(docs.keys()), itemname)
-            dbg("process_docstrings:   Assigning item to module: %s" %
-                modulename)
+            dbg(f"process_docstrings:   Assigning item to module: {modulename}")
             if modulename not in docs and os.environ.get("GITHUB_ACTIONS", default=None):
                 print("::error file=%s,line=%s,title='Unknown module'::Found a reference to module '%s', but that module has no definition anywhere" % (CHUNK_FILE, CHUNK_LINE, modulename))
             docs[modulename]["items"][itemname] = chunk
@@ -254,8 +236,8 @@ def process_docstrings(docstrings):
 
 def process_module(modulename, raw_module):
     """Process the docstrings for a module"""
-    dbg("Processing module: %s" % modulename)
-    dbg("Header: %s" % raw_module["header"][CHUNK_DESC])
+    dbg(f"Processing module: {modulename}")
+    dbg(f'Header: {raw_module["header"][CHUNK_DESC]}')
     module = {}
     module["name"] = modulename
     module["type"] = "Module"
@@ -275,11 +257,10 @@ def process_module(modulename, raw_module):
     #       this later and find another way to annotate deprecations
     module["Deprecated"] = []
     for itemname in raw_module["items"]:
-        dbg("  Processing item: %s" % itemname)
+        dbg(f"  Processing item: {itemname}")
         chunk = raw_module["items"][itemname]
         if chunk[CHUNK_TYPE] not in TYPE_NAMES:
-            err("UNKNOWN TYPE: %s (%s)" % (chunk[CHUNK_TYPE],
-                                           pprint.pformat(chunk)))
+            err(f"UNKNOWN TYPE: {chunk[CHUNK_TYPE]} ({pprint.pformat(chunk)})")
         basename = find_basename_from_itemname(itemname)
 
         item = {}
@@ -293,9 +274,8 @@ def process_module(modulename, raw_module):
         item["lineno"] = chunk[CHUNK_LINE]
 
         for section in ["Parameters", "Returns", "Notes", "Examples"]:
-            if section + ':' in chunk:
-                item[section.lower()] = get_section_from_chunk(chunk,
-                                                               section + ':')
+            if f'{section}:' in chunk:
+                item[section.lower()] = get_section_from_chunk(chunk, f'{section}:')
 
         item["stripped_doc"] = '\n'.join(strip_sections_from_chunk(chunk[CHUNK_DESC + 1:]))
         module[item["type"]].append(item)
@@ -315,7 +295,6 @@ def process_module(modulename, raw_module):
                 item["parameters"] = []
                 item["returns"] = []
                 item["notes"] = []
-                pass
             else:
                 sig_without_return = item["signature"].split("->")[0]
                 sig_params = re.sub(r".*\((.*)\).*", r"\1", sig_without_return)
@@ -324,9 +303,10 @@ def process_module(modulename, raw_module):
 
                 # Check if there are more than a single line of description at the top of the function
                 params_index = chunk[CHUNK_DESC:].index("Parameters:")
-                desc_section = [x for x in chunk[CHUNK_DESC:][0:params_index] if x != '']
+                desc_section = [x for x in chunk[CHUNK_DESC:][:params_index] if x != '']
                 if len(desc_section) > 1:
-                    message = "Function/Method/Constructor description for %s should be a single line. Other content may belong in the Notes: section." % sig_without_return
+                    message = f"Function/Method/Constructor description for {sig_without_return} should be a single line. Other content may belong in the Notes: section."
+
                     warn(message)
                     LINTS.append({
                         "file": item["file"],
@@ -341,7 +321,7 @@ def process_module(modulename, raw_module):
                 clean_params = []
                 numlines = len(item["parameters"])
                 try:
-                    for i in range(0, numlines):
+                    for i in range(numlines):
                         line = item["parameters"][i]
 
                         if line.startswith(" * "):
@@ -350,7 +330,7 @@ def process_module(modulename, raw_module):
                         elif line.startswith("  * ") or line.startswith("   * "):
                             if line.startswith("  * "):
                                 # Sub-lists should start with two spaces in GitHub Flavoured Markdown, so add in the missing space in this item
-                                line = " " + line
+                                line = f" {line}"
                             # This is a sub-parameter of the previous parameter, add it to that string in clean_params
                             prev_clean_line = clean_params[-1]
                             prev_clean_line += '\n' + line.rstrip()
@@ -358,10 +338,11 @@ def process_module(modulename, raw_module):
                         else:
                             # This should have been on the line before
                             prev_clean_line = clean_params[-1]
-                            prev_clean_line += ' ' + line.strip()
+                            prev_clean_line += f' {line.strip()}'
                             clean_params[-1] = prev_clean_line
                 except:
-                    message = "PARAMETERS FORMAT ISSUE: Unable to parse Parameters for: %s" % sig_without_return
+                    message = f"PARAMETERS FORMAT ISSUE: Unable to parse Parameters for: {sig_without_return}"
+
                     warn(message)
                     LINTS.append({
                         "file": item["file"],
@@ -453,15 +434,15 @@ def process_markdown(data):
 
     md = mistune.Markdown(renderer=HighlightRenderer())
 
-    for i in range(0, len(data)):
+    for i in range(len(data)):
         module = data[i]
         module["desc_gfm"] = md(module["desc"])
         module["doc_gfm"] = md(module["doc"])
         for item_type in TYPE_NAMES:
             items = module[item_type]
-            for j in range(0, len(items)):
+            for j in range(len(items)):
                 item = items[j]
-                dbg("Preparing template data for: %s" % item["def"])
+                dbg(f'Preparing template data for: {item["def"]}')
                 item["def_gfm"] = strip_paragraph(md(item["def"]))
                 item["doc_gfm"] = md(item["doc"])
                 if "notes" in item:
@@ -471,7 +452,7 @@ def process_markdown(data):
                     item["returns_gfm"] = md('\n'.join(item["returns"]))
                 items[j] = item
         # Now do the same for the deprecated 'items' list
-        for j in range(0, len(module["items"])):
+        for j in range(len(module["items"])):
             item = module["items"][j]
             item["def_gfm"] = strip_paragraph(md(item["def"]))
             item["doc_gfm"] = md(item["doc"])
@@ -503,7 +484,7 @@ def do_processing(directories):
         err("No modules found")
 
     for module in docs:
-        dbg("Processing: %s" % module)
+        dbg(f"Processing: {module}")
         module_docs = process_module(module, docs[module])
         module_docs["items"].sort(key=lambda item: item["name"].lower())
         for item_type in TYPE_NAMES:
@@ -518,13 +499,8 @@ def do_processing(directories):
                 cursor[part] = {}
             cursor = cursor[part]
 
-    # Iterate over the modules, consulting the module tree, to find their
-    # submodules
-    # (Note that this is done as a separate step after the above loop, to
-    #  ensure that we know about all possible modules by this point)
-    i = 0
-    for module in processed_docstrings:
-        dbg("Finding submodules for: %s" % module["name"])
+    for i, module in enumerate(processed_docstrings):
+        dbg(f'Finding submodules for: {module["name"]}')
         module_parts = module["name"].split('.')
         cursor = module_tree
         for part in module_parts:
@@ -533,8 +509,6 @@ def do_processing(directories):
         for sub in list(cursor.keys()):
             processed_docstrings[i]["submodules"].append(sub)
         processed_docstrings[i]["submodules"].sort()
-        i += 1
-
     processed_docstrings.sort(key=lambda module: module["name"].lower())
     return processed_docstrings
 
@@ -550,7 +524,11 @@ def write_annotations(filepath, data):
 def emit_lints(lints):
     """Print GitHub Actions messages to stderr for each of our docstrings lint errors"""
     for lint in lints:
-        print("::error file=%s,line=%s,title=%s::%s" % (lint["file"], lint["line"], lint["title"], lint["message"]), file=sys.stderr)
+        print(
+            f'::error file={lint["file"]},line={lint["line"]},title={lint["title"]}::{lint["message"]}',
+            file=sys.stderr,
+        )
+
 
     if len(lints) > 0:
         sys.exit(1)
@@ -567,15 +545,11 @@ def write_json_index(filepath, data):
     """Write out a JSON index of the docs"""
     index = []
     for item in data:
-        entry = {}
-        entry["name"] = item["name"]
-        entry["desc"] = item["desc"]
-        entry["type"] = item["type"]
+        entry = {"name": item["name"], "desc": item["desc"], "type": item["type"]}
         index.append(entry)
         for subtype in TYPE_NAMES:
             for subitem in item[subtype]:
-                entry = {}
-                entry["name"] = subitem["name"]
+                entry = {"name": subitem["name"]}
                 entry["module"] = item["name"]
                 entry["desc"] = subitem["desc"]
                 entry["type"] = subitem["type"]
@@ -613,7 +587,7 @@ def write_sql(filepath, data):
                             {"modname": module["name"], "itemname": item["name"],
                              "itemtype": item["type"]})
             except:
-                err("DB Insert failed on %s:%s(%s)" % (module["name"], item["name"], item["type"]))
+                err(f'DB Insert failed on {module["name"]}:{item["name"]}({item["type"]})')
 
     db.commit()
     cur.execute("VACUUM;")
@@ -635,22 +609,21 @@ def write_templated_output(output_dir, template_dir, title, source_url_base, dat
 
     # Prepare for writing index.<extensions>
     try:
-        outfile = open(output_dir + "/index." + extension, "wb")
+        outfile = open(f"{output_dir}/index.{extension}", "wb")
     except Exception as error:
-        err("Unable to create %s: %s" % (output_dir + "/index." + extension,
-            error))
+        err(f"Unable to create {output_dir}/index.{extension}: {error}")
 
     # Prepare for reading index.j2.<extension>
     try:
-        tmplfile = open(template_dir + "/index.j2." + extension, "r")
+        tmplfile = open(f"{template_dir}/index.j2.{extension}", "r")
     except Exception as error:
-        err("Unable to open index.j2.%s: %s" % (extension, error))
+        err(f"Unable to open index.j2.{extension}: {error}")
 
     if extension == "html":
         # Re-process the doc data to convert Markdown to HTML
         data = process_markdown(data)
         # Write out the data as a file, for later debugging
-        write_json(output_dir + "/templated_docs.json", data)
+        write_json(f"{output_dir}/templated_docs.json", data)
 
     # Render and write index.<extension>
     template = jinja.from_string(tmplfile.read())
@@ -658,25 +631,23 @@ def write_templated_output(output_dir, template_dir, title, source_url_base, dat
     outfile.write(render.encode("utf-8"))
     outfile.close()
     tmplfile.close()
-    dbg("Wrote index." + extension)
+    dbg(f"Wrote index.{extension}")
 
     # Render and write module docs
     try:
-        tmplfile = open(template_dir + "/module.j2." + extension, "r")
+        tmplfile = open(f"{template_dir}/module.j2.{extension}", "r")
         template = jinja.from_string(tmplfile.read())
     except Exception as error:
-        err("Unable to open module.j2.%s: %s" % (extension, error))
+        err(f"Unable to open module.j2.{extension}: {error}")
 
     for module in data:
-        with open("%s/%s.%s" % (output_dir,
-                                module["name"],
-                                extension), "wb") as docfile:
+        with open(f'{output_dir}/{module["name"]}.{extension}', "wb") as docfile:
             render = template.render(module=module,
                                      type_order=TYPE_NAMES,
                                      type_desc=TYPE_DESC,
                                      source_url_base=source_url_base)
             docfile.write(render.encode("utf-8"))
-            dbg("Wrote %s.%s" % (module["name"], extension))
+            dbg(f'Wrote {module["name"]}.{extension}')
 
     tmplfile.close()
 
@@ -740,7 +711,7 @@ def main():
 
     if arguments.debug:
         DEBUG = True
-    dbg("Arguments: %s" % arguments)
+    dbg(f"Arguments: {arguments}")
 
     if not arguments.validate and \
        not arguments.json and \
@@ -766,25 +737,31 @@ def main():
 
     results = do_processing(arguments.DIRS)
 
-    if arguments.validate:
-        # If we got this far, we already processed the docs, and validated them
-        pass
     if arguments.lint_mode:
-        write_annotations(arguments.output_dir + "/annotations.json", LINTS)
+        write_annotations(f"{arguments.output_dir}/annotations.json", LINTS)
         emit_lints(LINTS)
     if arguments.json:
-        write_json(arguments.output_dir + "/docs.json", results)
-        write_json_index(arguments.output_dir + "/docs_index.json", results)
+        write_json(f"{arguments.output_dir}/docs.json", results)
+        write_json_index(f"{arguments.output_dir}/docs_index.json", results)
     if arguments.sql:
-        write_sql(arguments.output_dir + "/docs.sqlite", results)
+        write_sql(f"{arguments.output_dir}/docs.sqlite", results)
     if arguments.html:
-        write_html(arguments.output_dir + "/html/",
-                   arguments.template_dir,
-                   arguments.title, arguments.source_url_base, results)
+        write_html(
+            f"{arguments.output_dir}/html/",
+            arguments.template_dir,
+            arguments.title,
+            arguments.source_url_base,
+            results,
+        )
+
     if arguments.markdown:
-        write_markdown(arguments.output_dir + "/markdown/",
-                       arguments.template_dir,
-                       arguments.title, arguments.source_url_base, results)
+        write_markdown(
+            f"{arguments.output_dir}/markdown/",
+            arguments.template_dir,
+            arguments.title,
+            arguments.source_url_base,
+            results,
+        )
 
 
 if __name__ == "__main__":
